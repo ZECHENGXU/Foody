@@ -1,0 +1,163 @@
+:root {
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  color: #1d261f;
+  background: linear-gradient(180deg, #f5f1e8 0%, #fbf9f5 100%);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+.app-shell {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 24px 16px 48px;
+}
+
+.card {
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid #d8d1c2;
+  border-radius: 18px;
+  padding: 18px;
+  box-shadow: 0 12px 30px rgba(53, 42, 25, 0.08);
+}
+
+.grid {
+  display: grid;
+  gap: 16px;
+}
+
+.grid.two {
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+
+.stack {
+  display: grid;
+  gap: 12px;
+}
+
+.hero {
+  padding: 28px 0 12px;
+}
+
+.title {
+  font-size: 32px;
+  font-weight: 700;
+  margin: 0 0 8px;
+}
+
+.subtitle {
+  margin: 0;
+  color: #556056;
+}
+
+.field {
+  display: grid;
+  gap: 8px;
+}
+
+.field input,
+.field textarea {
+  width: 100%;
+  border: 1px solid #c9c1b1;
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: #fffdf9;
+}
+
+.field textarea {
+  min-height: 110px;
+  resize: vertical;
+}
+
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.button {
+  border: none;
+  border-radius: 999px;
+  padding: 10px 16px;
+  background: #285943;
+  color: white;
+  cursor: pointer;
+}
+
+.button.secondary {
+  background: #e7ddd0;
+  color: #332a21;
+}
+
+.pill {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 6px 10px;
+  background: #efe7d9;
+  color: #524638;
+  font-size: 12px;
+}
+
+.nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.ai-status-card {
+  margin-bottom: 18px;
+}
+
+.ai-status-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.ai-test-result {
+  margin-top: 14px;
+  border-radius: 14px;
+  padding: 12px 14px;
+}
+
+.ai-test-result.success {
+  background: #e7f5eb;
+  border: 1px solid #b9debf;
+}
+
+.ai-test-result.error {
+  background: #fbe7e4;
+  border: 1px solid #e0b5af;
+}
+
+.list {
+  display: grid;
+  gap: 12px;
+}
+
+.muted {
+  color: #687266;
+}
+
+.result-block h3 {
+  margin-bottom: 8px;
+}

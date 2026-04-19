@@ -1,0 +1,35 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Run Foody MVP",
+      "type": "node",
+      "request": "launch",
+      "cwd": "${workspaceFolder}",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": [
+        "/c",
+        "echo Foody MVP services are starting in VS Code tasks..."
+      ],
+      "preLaunchTask": "app: run all",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Backend Only",
+      "type": "python",
+      "request": "launch",
+      "module": "uvicorn",
+      "args": [
+        "app.main:app",
+        "--reload",
+        "--port",
+        "8000"
+      ],
+      "cwd": "${workspaceFolder}/backend",
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "python": "${workspaceFolder}/backend/.venv/Scripts/python.exe",
+      "preLaunchTask": "backend: install deps"
+    }
+  ]
+}
