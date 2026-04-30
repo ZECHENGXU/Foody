@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 
-import { dishApi, profileApi, storeApi } from "../services/api";
+import { dishApi, storeApi } from "../services/api";
 import { useAuthStore } from "../store/authStore";
 
 export function DashboardPage() {
@@ -17,12 +17,6 @@ export function DashboardPage() {
     queryKey: ["dishes", numericStoreId],
     queryFn: () => dishApi.list(numericStoreId)
   });
-  const { data: profile } = useQuery({
-    queryKey: ["profile", numericStoreId],
-    queryFn: () => profileApi.get(numericStoreId),
-    retry: false
-  });
-
   useEffect(() => {
     if (store) {
       setCurrentStore(store);
@@ -47,25 +41,7 @@ export function DashboardPage() {
         </div>
       </section>
 
-      <div className="grid two">
-        <section className="card stack">
-          <h3>店铺风格档案</h3>
-          {profile ? (
-            <>
-              <div className="button-row">
-                {profile.style_keywords.map((keyword) => (
-                  <span key={keyword} className="pill">
-                    {keyword}
-                  </span>
-                ))}
-              </div>
-              <div>{profile.overall_style_summary}</div>
-            </>
-          ) : (
-            <div className="muted">还没有风格档案，可以先跳过，也可以现在补充。</div>
-          )}
-        </section>
-
+      <div>
         <section className="card stack">
           <h3>菜品历史</h3>
           {dishes.slice(0, 5).map((dish) => (

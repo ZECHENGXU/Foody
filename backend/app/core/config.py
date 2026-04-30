@@ -12,15 +12,17 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 60 * 24 * 7
     database_url: str = f"sqlite:///{(BASE_DIR / 'foody.db').as_posix()}"
     cors_origins: str = "http://localhost:5173"
+    cors_origin_regex: str = r"https?://(localhost|127\.0\.0\.1)(:\d+)?"
     upload_dir: str = str(BASE_DIR / "uploads")
     demo_user_email: str = "demo@example.com"
     demo_user_password: str = "demo123456"
     ai_provider: str = "auto"
     ai_fallback_to_mock: bool = True
     ai_timeout_seconds: int = 60
+    ai_proxy_url: str = ""
 
     openai_api_key: str = ""
-    openai_model: str = "gpt-4.1-mini"
+    openai_model: str = "gpt-4o-mini"
     openai_base_url: str = "https://api.openai.com/v1"
 
     anthropic_api_key: str = ""
@@ -46,6 +48,11 @@ class Settings(BaseSettings):
     @property
     def cors_origin_list(self) -> list[str]:
         return [item.strip() for item in self.cors_origins.split(",") if item.strip()]
+
+    @property
+    def cors_origin_regex_or_none(self) -> str | None:
+        value = self.cors_origin_regex.strip()
+        return value or None
 
 
 settings = Settings()

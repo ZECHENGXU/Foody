@@ -8,6 +8,7 @@ import { useAuthStore } from "../store/authStore";
 export function StoresPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const currentStore = useAuthStore((state) => state.currentStore);
   const setCurrentStore = useAuthStore((state) => state.setCurrentStore);
   const { data: stores = [] } = useQuery({ queryKey: ["stores"], queryFn: storeApi.list });
   const [form, setForm] = useState({
@@ -26,6 +27,16 @@ export function StoresPage() {
     }
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: storeApi.remove,
+    onSuccess: async (_, deletedStoreId) => {
+      await queryClient.invalidateQueries({ queryKey: ["stores"] });
+      if (currentStore?.id === deletedStoreId) {
+        setCurrentStore(null);
+      }
+    }
+  });
+
   const submit = (event: FormEvent) => {
     event.preventDefault();
     createMutation.mutate({
@@ -34,6 +45,14 @@ export function StoresPage() {
       cuisine_type: form.cuisine_type || undefined,
       average_price: form.average_price ? Number(form.average_price) : null
     });
+  };
+
+  const handleDelete = (storeId: number, storeName: string) => {
+    const confirmed = window.confirm(`确认删除店铺「${storeName}」吗？相关档案、菜品和历史建议也会一并删除。`);
+    if (!confirmed) {
+      return;
+    }
+    deleteMutation.mutate(storeId);
   };
 
   return (
@@ -64,6 +83,14 @@ export function StoresPage() {
                   <Link className="button secondary" to={`/stores/${store.id}/profile`} onClick={() => setCurrentStore(store)}>
                     档案
                   </Link>
+                  <button
+                    className="button danger"
+                    type="button"
+                    onClick={() => handleDelete(store.id, store.name)}
+                    disabled={deleteMutation.isPending}
+                  >
+                    {deleteMutation.isPending && deleteMutation.variables === store.id ? "删除中..." : "删除"}
+                  </button>
                 </div>
               </div>
             </div>

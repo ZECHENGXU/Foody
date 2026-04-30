@@ -15,7 +15,7 @@ export function AppLayout() {
             Foody MVP
           </Link>
           <div className="muted">
-            {user?.email ?? "Guest"}
+            {user?.email ?? "游客"}
             {currentStore ? ` · 当前店铺：${currentStore.name}` : ""}
           </div>
         </div>

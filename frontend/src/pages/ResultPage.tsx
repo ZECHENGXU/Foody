@@ -3,6 +3,20 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { suggestionApi } from "../services/api";
 
+const platingLabels: Record<string, string> = {
+  main_placement: "主料摆放",
+  garnish: "点缀搭配",
+  spacing: "留白空间",
+  plateware: "餐具选择",
+};
+
+const visualLabels: Record<string, string> = {
+  color: "色彩呈现",
+  background: "背景搭配",
+  angle: "拍摄角度",
+  lighting: "光线建议",
+};
+
 export function ResultPage() {
   const navigate = useNavigate();
   const { storeId = "", suggestionId = "" } = useParams();
@@ -41,13 +55,13 @@ export function ResultPage() {
         <section className="card result-block">
           <h3>摆盘建议</h3>
           {Object.entries(data.plating_suggestions).map(([key, value]) => (
-            <div key={key}><strong>{key}：</strong>{value}</div>
+            <div key={key}><strong>{platingLabels[key] || key}：</strong>{value}</div>
           ))}
         </section>
         <section className="card result-block">
           <h3>视觉与拍照建议</h3>
           {Object.entries(data.visual_suggestions).map(([key, value]) => (
-            <div key={key}><strong>{key}：</strong>{value}</div>
+            <div key={key}><strong>{visualLabels[key] || key}：</strong>{value}</div>
           ))}
         </section>
       </div>

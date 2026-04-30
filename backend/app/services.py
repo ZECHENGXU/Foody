@@ -13,7 +13,7 @@ from urllib import error, parse, request
 import uuid
 
 from fastapi import HTTPException, UploadFile, status
-from sqlalchemy import desc, select
+from sqlalchemy import delete, desc, select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -96,7 +96,7 @@ class AuthService:
         if user:
             return user
         user = User(
-            name="Demo User",
+            name="演示用户",
             email=settings.demo_user_email,
             password_hash=hash_password(settings.demo_user_password),
         )
@@ -108,7 +108,7 @@ class AuthService:
     def login(self, db: Session, email: str, password: str) -> tuple[str, User]:
         user = db.scalar(select(User).where(User.email == email))
         if not user or not verify_password(password, user.password_hash):
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="账号或密码错误")
         user.last_login_at = datetime.now(UTC)
         db.commit()
         token = create_access_token(str(user.id))
@@ -122,7 +122,7 @@ class StoreService:
     def get_store_or_404(self, db: Session, user_id: int, store_id: int) -> Store:
         store = db.scalar(select(Store).where(Store.user_id == user_id, Store.id == store_id))
         if not store:
-            raise HTTPException(status_code=404, detail="Store not found")
+            raise HTTPException(status_code=404, detail="店铺不存在")
         return store
 
     def create(self, db: Session, user_id: int, payload: StoreCreate) -> Store:
@@ -138,6 +138,13 @@ class StoreService:
         db.commit()
         db.refresh(store)
         return store
+
+    def delete(self, db: Session, store: Store) -> None:
+        db.execute(delete(SuggestionRecord).where(SuggestionRecord.store_id == store.id))
+        db.execute(delete(Dish).where(Dish.store_id == store.id))
+        db.execute(delete(StoreProfile).where(StoreProfile.store_id == store.id))
+        db.delete(store)
+        db.commit()
 
 
 class StoreProfileService:
@@ -178,7 +185,7 @@ class DishService:
     def get_or_404(self, db: Session, store: Store, dish_id: int) -> Dish:
         dish = db.scalar(select(Dish).where(Dish.store_id == store.id, Dish.id == dish_id))
         if not dish:
-            raise HTTPException(status_code=404, detail="Dish not found")
+            raise HTTPException(status_code=404, detail="菜品不存在")
         return dish
 
     def create(self, db: Session, store: Store, payload: DishInput) -> Dish:
@@ -208,29 +215,101 @@ class AIService:
         "openai_compatible": "OpenAI-Compatible",
     }
 
-    def generate_store_profile_summary(self, answers: dict[str, str]) -> dict:
-        values = [value.strip() for value in answers.values() if value and value.strip()]
+    PROFILE_FIELD_LABELS = {
+        "customer_groups": "客群",
+        "price_range": "客单价",
+        "consumption_scenarios": "消费场景",
+        "store_styles": "店铺风格",
+        "desired_feelings": "最想传递的感觉",
+        "differentiators": "顾客选择本店的原因",
+        "customer_descriptions": "希望顾客如何描述本店",
+        "photogenic_level": "是否适合拍照",
+        "emotion_tags": "店铺情绪标签",
+        "fit_scenarios": "更适合的场景",
+        "restaurant_style": "餐厅风格",
+        "signature_focus": "突出卖点",
+        "target_customers": "目标顾客",
+        "desired_feeling": "希望顾客感受到的感觉",
+        "tone_preference": "文案与服务表达偏好",
+    }
+
+    def generate_store_profile_summary(self, answers: dict[str, Any]) -> dict:
+        prompt_answers = self._format_store_profile_answers(answers)
         prompt = (
             "你是餐厅品牌与菜单表达顾问。"
             "请根据店铺问答，总结一份轻量店铺风格档案。"
             "你必须返回 JSON，字段严格符合给定 schema。"
-            "style_keywords 控制在 3 到 6 个短词。"
-            f"\n店铺回答：{json.dumps(self._json_ready(answers), ensure_ascii=False)}"
+            "JSON 键名必须严格使用英文，所有值的内容必须用中文输出。"
+            "style_keywords 控制在 3 到 6 个短词，必须为中文词汇。"
+            f"\n店铺回答：{json.dumps(self._json_ready(prompt_answers), ensure_ascii=False)}"
         )
         result = self._generate_json(
-            system_prompt="请只输出 JSON，不要输出 markdown，不要解释。",
+            system_prompt=(
+                "请只输出 JSON，不要输出 markdown，不要解释。"
+                "JSON 键名必须严格使用英文，不得翻译。所有值的内容必须为中文。"
+            ),
             user_prompt=prompt,
             schema=STORE_PROFILE_SCHEMA,
             image_url=None,
         )
+        result = self._ensure_response_chinese(result)
         if not isinstance(result.get("style_keywords"), list):
-            raise ValueError("Invalid store profile response")
+            if settings.ai_fallback_to_mock:
+                result = self._mock_response(prompt, None, STORE_PROFILE_SCHEMA)
+            else:
+                raise ValueError("Invalid store profile response")
         return {
             "style_keywords": [str(item) for item in result["style_keywords"]][:6],
             "plating_direction": str(result.get("plating_direction", "")),
             "tone_of_voice": str(result.get("tone_of_voice", "")),
             "overall_style_summary": str(result.get("overall_style_summary", "")),
         }
+
+    def _format_store_profile_answers(self, answers: dict[str, Any]) -> dict[str, Any]:
+        formatted: dict[str, Any] = {}
+        for key, value in answers.items():
+            normalized = self._normalize_profile_answer_value(value)
+            if normalized in (None, "", [], {}):
+                continue
+            label = self.PROFILE_FIELD_LABELS.get(key, key)
+            formatted[label] = normalized
+        return formatted or {"说明": "暂无已填写的店铺风格信息"}
+
+    def _normalize_profile_answer_value(self, value: Any) -> Any:
+        if isinstance(value, str):
+            return value.strip()
+        if isinstance(value, list):
+            items = [str(item).strip() for item in value if str(item).strip()]
+            return items
+        if isinstance(value, dict):
+            selected = value.get("selected")
+            custom = value.get("custom")
+            if isinstance(selected, list):
+                items = [str(item).strip() for item in selected if str(item).strip()]
+                if isinstance(custom, list):
+                    items.extend(str(item).strip() for item in custom if str(item).strip())
+                elif isinstance(custom, str) and custom.strip():
+                    items.append(custom.strip())
+                return items
+            if isinstance(selected, str):
+                selected_text = selected.strip()
+                custom_items: list[str] = []
+                if isinstance(custom, list):
+                    custom_items = [str(item).strip() for item in custom if str(item).strip()]
+                elif isinstance(custom, str) and custom.strip():
+                    custom_items = [custom.strip()]
+                if selected_text and selected_text != "其他":
+                    return [selected_text, *custom_items] if custom_items else selected_text
+                if len(custom_items) == 1:
+                    return custom_items[0]
+                return custom_items
+            normalized: dict[str, Any] = {}
+            for nested_key, nested_value in value.items():
+                nested_normalized = self._normalize_profile_answer_value(nested_value)
+                if nested_normalized not in (None, "", [], {}):
+                    normalized[str(nested_key)] = nested_normalized
+            return normalized
+        return value
 
     def generate_dish_suggestions(
         self,
@@ -249,20 +328,35 @@ class AIService:
         prompt = (
             "你是专业餐饮品牌包装与菜品视觉顾问。"
             "请根据店铺信息、店铺风格档案、菜品信息，输出结构化 JSON 建议。"
+            "JSON 键名必须严格使用英文，所有值的内容必须用中文输出。"
             "建议必须可执行、简洁、适合中小餐厅使用。"
-            "service_lines 输出 1 到 3 条简洁直接型话术。"
+            "service_lines 输出 1 到 3 条简洁直接型中文话术。"
             f"\n店铺信息：{json.dumps(self._json_ready({'name': store.name, 'restaurant_type': store.restaurant_type, 'cuisine_type': store.cuisine_type, 'average_price': store.average_price}), ensure_ascii=False)}"
             f"\n店铺风格档案：{json.dumps(self._json_ready(style), ensure_ascii=False)}"
             f"\n菜品信息：{json.dumps(dish_json, ensure_ascii=False)}"
             f"\n额外目标：{extra_goal or ''}"
         )
+        schema_json = json.dumps(SUGGESTION_SCHEMA, ensure_ascii=False)
         result, model_info = self._generate_json_with_meta(
-            system_prompt="请只输出 JSON，不要输出 markdown，不要解释。",
+            system_prompt=(
+                "请只输出 JSON，不要输出 markdown，不要解释。"
+                "JSON 键名必须严格使用英文，不得翻译。所有值的内容必须为中文。"
+                f"\n必须遵守的 JSON schema：{schema_json}"
+            ),
             user_prompt=prompt,
             schema=SUGGESTION_SCHEMA,
             image_url=dish_json.get("image_url"),
         )
-        suggestion = SuggestionResult.model_validate(result)
+        result = self._ensure_response_chinese(result)
+        try:
+            suggestion = SuggestionResult.model_validate(result)
+        except Exception as exc:
+            if not settings.ai_fallback_to_mock:
+                raise HTTPException(status_code=502, detail=f"AI 返回格式异常：{exc}") from exc
+            result = self._mock_response(prompt, dish_json.get("image_url"), SUGGESTION_SCHEMA)
+            result = self._ensure_response_chinese(result)
+            suggestion = SuggestionResult.model_validate(result)
+            model_info = {"provider": "mock", "fallback_used": True, "fallback_reason": f"Schema validation: {exc}"}
         return suggestion, model_info
 
     def _generate_json(self, system_prompt: str, user_prompt: str, schema: dict[str, Any], image_url: str | None) -> dict[str, Any]:
@@ -292,7 +386,7 @@ class AIService:
             raise ValueError(f"Unsupported provider: {provider}")
         except Exception as exc:
             if not settings.ai_fallback_to_mock:
-                raise HTTPException(status_code=502, detail=f"AI provider call failed: {exc}") from exc
+                raise HTTPException(status_code=502, detail=f"AI 调用失败：{exc}") from exc
             fallback = self._mock_response(user_prompt, image_url, schema)
             return fallback, {
                 "provider": provider,
@@ -638,11 +732,22 @@ class AIService:
         data = base64.b64encode(candidate.read_bytes()).decode("utf-8")
         return {"mime_type": mime_type, "base64": data}
 
+    def _build_opener(self):
+        proxy_url = settings.ai_proxy_url.strip()
+        if proxy_url:
+            proxy_handler = request.ProxyHandler({
+                "http": proxy_url,
+                "https": proxy_url,
+            })
+            return request.build_opener(proxy_handler)
+        return request.build_opener()
+
     def _post_json(self, url: str, headers: dict[str, str], payload: dict[str, Any]) -> dict[str, Any]:
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         req = request.Request(url=url, data=body, headers=headers, method="POST")
+        opener = self._build_opener()
         try:
-            with request.urlopen(req, timeout=settings.ai_timeout_seconds) as response:
+            with opener.open(req, timeout=settings.ai_timeout_seconds) as response:
                 return json.loads(response.read().decode("utf-8"))
         except error.HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="ignore")
@@ -670,33 +775,33 @@ class AIService:
     def _mock_response(self, user_prompt: str, image_url: str | None, schema: dict[str, Any]) -> dict[str, Any]:
         if schema is STORE_PROFILE_SCHEMA:
             return {
-                "style_keywords": ["warm", "practical", "shareable"],
-                "plating_direction": "Keep the dish clear, appetizing, and easy to reproduce in daily service.",
-                "tone_of_voice": "Direct, warm, and appetizing, without sounding overly formal.",
-                "overall_style_summary": user_prompt[:220] or "A practical store profile for better daily presentation.",
+                "style_keywords": ["温暖", "实用", "适合分享"],
+                "plating_direction": "保持菜品清晰、有食欲，便于日常出餐时稳定复现。",
+                "tone_of_voice": "直接、温暖、有食欲，不过于正式。",
+                "overall_style_summary": user_prompt[:220] or "一份实用的店铺风格档案，帮助提升日常菜品展示效果。",
             }
         return {
             "plating_suggestions": {
-                "main_placement": "Center the main portion and add gentle height so the dish reads clearly at first glance.",
-                "garnish": "Use one garnish tied to the ingredients instead of decorative clutter.",
-                "spacing": "Keep around 20% negative space for a cleaner mobile-friendly look.",
-                "plateware": "Use simple plateware that supports the store style rather than stealing attention.",
+                "main_placement": "主料居中摆放，适当增加高度层次，让菜品第一眼就清晰可辨。",
+                "garnish": "用与食材相关的点缀代替纯装饰性摆件，保持简洁。",
+                "spacing": "保留约 20% 留白空间，让手机拍照时画面更干净。",
+                "plateware": "选用简洁餐具，衬托店铺风格，不喧宾夺主。",
             },
             "visual_suggestions": {
-                "color": "Preserve ingredient contrast and avoid mixed lighting that muddies the food color.",
-                "background": "Use a calm tabletop and remove unrelated props from the frame.",
-                "angle": "45-degree close-up" if image_url else "slightly elevated angle for menu and social use",
-                "lighting": "Soft side light is preferred; avoid hard overhead glare.",
+                "color": "保持食材本身的色彩对比，避免混合光源让食物颜色失真。",
+                "background": "使用干净的桌面背景，移除画面中无关的物品。",
+                "angle": "45 度特写" if image_url else "稍微俯拍的角度，适合菜单展示和社交分享",
+                "lighting": "优先使用柔和的侧光，避免顶部强光直射产生眩光。",
             },
             "copywriting": {
-                "story": "This dish should feel like a dependable signature that is easy to recommend and easy to remember.",
-                "menu_description": "A cleaner, more appetizing presentation designed for quick understanding and better first impressions.",
-                "marketing_line": "Looks cleaner, sells faster, and makes the table moment easier to share.",
+                "story": "这道菜应该给人可靠、值得推荐的感觉，让人吃了就记住。",
+                "menu_description": "更清爽、更有食欲的呈现方式，让顾客一眼就能理解菜品的亮点。",
+                "marketing_line": "摆盘更清爽，卖得更快，随手一拍就能分享。",
             },
             "service_lines": [
-                "This one is especially good when served fresh because the presentation is very complete.",
-                "The flavor is easy to understand, so it is a safe recommendation for first-time guests.",
-                "If needed, we can further tune this version for social posting or menu refresh.",
+                "这道菜趁热上桌效果最好，摆盘完整度很高，推荐优先介绍。",
+                "口味容易接受，适合向第一次来的客人推荐，基本不会出错。",
+                "有需要的话，我们可以针对社交平台的传播再微调这一版的呈现方式。",
             ],
             "notes": {
                 "used_store_profile": "店铺风格档案" in user_prompt,
@@ -704,6 +809,68 @@ class AIService:
                 "extra_goal": "",
             },
         }
+
+    def _collect_string_values(self, data: Any) -> list[str]:
+        result: list[str] = []
+        if isinstance(data, str):
+            result.append(data)
+        elif isinstance(data, dict):
+            for v in data.values():
+                result.extend(self._collect_string_values(v))
+        elif isinstance(data, list):
+            for item in data:
+                result.extend(self._collect_string_values(item))
+        return result
+
+    def _is_mostly_english(self, text: str) -> bool:
+        cjk = sum(1 for c in text if "一" <= c <= "鿿")
+        alpha = sum(1 for c in text if c.isascii() and c.isalpha())
+        total = cjk + alpha
+        if total == 0:
+            return False
+        return (cjk / total) < 0.2
+
+    def _ensure_response_chinese(self, result: dict[str, Any]) -> dict[str, Any]:
+        strings = self._collect_string_values(result)
+        combined = " ".join(strings)
+        if not combined or not self._is_mostly_english(combined):
+            return result
+
+        try:
+            translate_prompt = (
+                "请将以下 JSON 中所有英文字符串值翻译为中文。"
+                "保持 JSON 结构完全不变，只翻译字符串 value 的内容，key 不要动。"
+                "翻译结果必须仍然是合法 JSON。"
+                f"\n{json.dumps(result, ensure_ascii=False)}"
+            )
+            translated = self._generate_json(
+                system_prompt="你是翻译助手，请将输入中的所有英文翻译为中文。只输出翻译后的 JSON，不要解释。",
+                user_prompt=translate_prompt,
+                schema={"type": "object"},
+                image_url=None,
+            )
+            return self._merge_translations(result, translated)
+        except Exception:
+            return result
+
+    def _merge_translations(self, original: dict[str, Any], translated: dict[str, Any]) -> dict[str, Any]:
+        merged: dict[str, Any] = {}
+        for key, value in original.items():
+            tv = translated.get(key)
+            if isinstance(value, str) and isinstance(tv, str):
+                merged[key] = tv
+            elif isinstance(value, dict) and isinstance(tv, dict):
+                merged[key] = self._merge_translations(value, tv)
+            elif isinstance(value, list) and isinstance(tv, list):
+                merged[key] = [
+                    self._merge_translations(item, titem) if isinstance(item, dict) and isinstance(titem, dict)
+                    else titem if isinstance(item, str) and isinstance(titem, str)
+                    else item
+                    for i, (item, titem) in enumerate(zip(value, tv))
+                ]
+            else:
+                merged[key] = value
+        return merged
 
 
 class SuggestionService:
@@ -756,7 +923,7 @@ class SuggestionService:
         )
         suggestion = db.scalar(stmt)
         if not suggestion:
-            raise HTTPException(status_code=404, detail="Suggestion not found")
+            raise HTTPException(status_code=404, detail="建议记录不存在")
         return self.to_response(suggestion)
 
     def to_response(self, suggestion: SuggestionRecord) -> SuggestionRecordResponse:
@@ -782,7 +949,7 @@ class UploadService:
 
     def save_image(self, upload: UploadFile) -> tuple[str, str]:
         if upload.content_type not in self.allowed_types:
-            raise HTTPException(status_code=400, detail="Unsupported image type")
+            raise HTTPException(status_code=400, detail="不支持的图片格式")
         root = Path(settings.upload_dir)
         now = datetime.now()
         target_dir = root / f"{now.year:04d}" / f"{now.month:02d}"

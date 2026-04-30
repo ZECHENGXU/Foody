@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
@@ -78,11 +78,18 @@ def update_store(store_id: int, payload: StoreUpdate, db: Session = Depends(get_
     return StoreResponse.model_validate(store_service.update(db, store, payload))
 
 
+@router.delete("/stores/{store_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_store(store_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)) -> Response:
+    store = store_service.get_store_or_404(db, user.id, store_id)
+    store_service.delete(db, store)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.get("/stores/{store_id}/profile", response_model=StoreProfileResponse)
 def get_profile(store_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)) -> StoreProfileResponse:
     store = store_service.get_store_or_404(db, user.id, store_id)
     if not store.profile:
-        raise HTTPException(status_code=404, detail="Store profile not found")
+        raise HTTPException(status_code=404, detail="店铺档案不存在")
     return StoreProfileResponse.model_validate(store.profile)
 
 

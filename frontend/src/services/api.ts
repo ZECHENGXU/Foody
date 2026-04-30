@@ -55,6 +55,9 @@ export const storeApi = {
   async get(id: number) {
     const { data } = await api.get<Store>(`/stores/${id}`);
     return data;
+  },
+  async remove(id: number) {
+    await api.delete(`/stores/${id}`);
   }
 };
 
@@ -63,7 +66,7 @@ export const profileApi = {
     const { data } = await api.get<StoreProfile>(`/stores/${storeId}/profile`);
     return data;
   },
-  async upsert(storeId: number, answers: Record<string, string>) {
+  async upsert(storeId: number, answers: Record<string, unknown>) {
     const { data } = await api.post<StoreProfile>(`/stores/${storeId}/profile`, { answers });
     return data;
   },

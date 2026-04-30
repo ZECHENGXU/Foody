@@ -1,5 +1,6 @@
 from datetime import datetime
 from decimal import Decimal
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
@@ -56,14 +57,14 @@ class StoreResponse(ORMModel):
 
 
 class StoreProfileUpsertRequest(BaseModel):
-    answers: dict[str, str] = Field(default_factory=dict)
+    answers: dict[str, Any] = Field(default_factory=dict)
 
 
 class StoreProfileResponse(ORMModel):
     id: int
     store_id: int
     onboarding_status: str
-    answers_json: dict[str, str]
+    answers_json: dict[str, Any]
     style_keywords: list[str]
     plating_direction: str | None = None
     tone_of_voice: str | None = None

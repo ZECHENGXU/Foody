@@ -1,8 +1,26 @@
 import { FormEvent, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import axios from "axios";
 
 import { suggestionApi, uploadApi } from "../services/api";
+
+function extractErrorMessage(err: unknown): string {
+  if (axios.isAxiosError(err)) {
+    if (err.response) {
+      const detail = (err.response.data as { detail?: string })?.detail;
+      return detail || `HTTP ${err.response.status}: ${err.response.statusText}`;
+    }
+    if (err.request) {
+      return "无法连接后端服务，请确认后端是否已启动";
+    }
+    return err.message;
+  }
+  if (err instanceof Error) {
+    return err.message;
+  }
+  return "未知错误";
+}
 
 export function GeneratePage() {
   const { storeId = "" } = useParams();
@@ -42,6 +60,9 @@ export function GeneratePage() {
     },
     onSuccess: (data) => {
       navigate(`/stores/${storeId}/results/${data.suggestion_record.id}`);
+    },
+    onError: () => {
+      // 错误通过 mutation.error 展示，不需要额外处理
     }
   });
 
@@ -53,6 +74,12 @@ export function GeneratePage() {
   return (
     <form className="card stack" onSubmit={submit}>
       <h2>{editingDishId ? "更新菜品并再次生成" : "新增菜品并生成建议"}</h2>
+
+      {mutation.isError && (
+        <div className="ai-test-result error" style={{ marginBottom: 12 }}>
+          <strong>生成失败：</strong>{extractErrorMessage(mutation.error)}
+        </div>
+      )}
       <div className="grid two">
         <div className="field">
           <label>菜品名称</label>
@@ -72,7 +99,7 @@ export function GeneratePage() {
         <textarea value={form.ingredients_method} onChange={(e) => setForm({ ...form, ingredients_method: e.target.value })} />
       </div>
       <div className="field">
-        <label>补充目标</label>
+        <label>补充</label>
         <textarea value={form.extra_goal} onChange={(e) => setForm({ ...form, extra_goal: e.target.value })} />
       </div>
       <div className="field">

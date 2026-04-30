@@ -25,7 +25,7 @@ export type StoreProfile = {
   id: number;
   store_id: number;
   onboarding_status: string;
-  answers_json: Record<string, string>;
+  answers_json: Record<string, unknown>;
   style_keywords: string[];
   plating_direction: string | null;
   tone_of_voice: string | null;

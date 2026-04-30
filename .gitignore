@@ -5,3 +5,4 @@ node_modules/
 dist/
 foody.db
 backend/uploads/
+.env
